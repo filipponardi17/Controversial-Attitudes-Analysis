@@ -1,0 +1,259 @@
+---
+title: "CSS"
+author: "Filippo Nardi"
+date: "2024-02-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# LOAD DATA
+
+```{r cars}
+load("/Users/filipponardi/Documents/GitHub/pop_vote/1 Dataframes imputati/Imputed PMM integral FINALE.Rda")
+```
+
+# CREATE COUNTRIES
+
+```{r pressure, echo=FALSE}
+print(head(integral_pmm_cleaned))
+
+# Define countries list
+countries <- c("Austria", "Croatia", "Czechia", "Denmark", "Estonia",
+                "Finland", "France", "Germany", "Great-Britain", "Hungary",
+                "Italy", "Lithuania", "Netherlands", "Norway", "Poland",
+                "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden")
+
+vars_to_drop <- c("Unnamed: 0", "cntry_name", "id", "pop_vote", "E181_EVS5")
+```
+
+```{r}
+for (country in countries) {
+  # Filter the dataframe for the current country
+  country_integral_pmm_cleaned <- integral_pmm_cleaned[integral_pmm_cleaned$cntry_name == country, ]
+  
+  # Loop through the list of columns to drop
+  for (column in vars_to_drop) {
+    # Drop the column from the dataframe
+    country_integral_pmm_cleaned <- country_integral_pmm_cleaned[, !(names(country_integral_pmm_cleaned) %in% column)]
+  }
+  
+  # Assign the modified dataframe to a variable
+  assign(paste("df", gsub(" ", "_", country), sep = ""), country_integral_pmm_cleaned)
+}
+```
+
+# create dfEU
+
+```{r}
+
+library(dplyr)
+# Assuming df1, df2, df3, and df4 are your data frames
+dfEU <- bind_rows(dfItaly, dfGermany, dfFrance, dfSpain)
+```
+
+# Create target + drop vars in dfEU
+
+```{r}
+
+dfEU$target <- dfEU$js_abr + dfEU$js_hom + dfEU$imp_imm
+dfEU <- subset(dfEU, select = -c(js_abr, js_hom, imp_imm))
+
+```
+
+# LCA
+
+```{r}
+library(poLCA)
+
+# Assuming dfEU is your dataframe containing all the variables
+
+# Perform LCA with different number of classes
+BIC_values <- numeric(5)  # Preallocate space for BIC values
+for (k in 1:5) {  # Loop through different numbers of classes
+  f1 <- as.formula(paste("(cbind(js_div, js_euth, hom_prn, js_sex, js_prst, js_suic, imp_rlg, job_ntn, incm_lvl, c_chr) ~ 1)"))
+  fit <- poLCA(f1, data = dfEU, nclass = k)
+  BIC_values[k] <- fit$bic
+}
+
+# Plot BIC values
+plot(1:5, BIC_values, type = "b", xlab = "Number of Classes", ylab = "BIC", main = "BIC Plot for Latent Class Analysis")
+
+# Find the best number of classes based on minimum BIC
+best_K <- which.min(BIC_values)
+cat("The best number of classes according to BIC:", best_K)
+
+
+```
+
+let's use 2
+
+```{r}
+library(LCAplotter)
+
+f1 <- as.formula(paste("(cbind(js_div, js_euth, hom_prn, js_sex, js_prst, js_suic, imp_rlg, job_ntn, incm_lvl, c_chr) ~ 1)"))
+fit <- poLCA(f1, data = dfEU, nclass = 2, graphs = TRUE)
+```
+
+drop a column:\
+
+```{r}
+dfEU <- dfEU[, !names(dfEU) %in% "isco_1digit"]
+```
+
+# PCA
+
+```{r}
+library(tidyverse)
+library(GGally) # ggplot2-based visualization of correlations
+library(factoextra) # ggplot2-based visualization of pca
+```
+
+```{r}
+pca = prcomp(dfEU, scale=T)
+# pca = princomp(nba, cor=T) # the same, but using SVD instead of eigen decomposition 
+summary(dfEU)
+```
+
+```{r}
+screeplot(pca,main="Screeplot",col="blue",type="barplot",pch=19)
+```
+
+```{r}
+fviz_screeplot(pca, addlabels = TRUE)
+```
+
+# interpretaion dimension:
+
+```{r}
+barplot(pca$rotation[,1], las=2, col="darkblue", main="Principal Component 1 Loadings")
+
+```
+
+```{r}
+sum(pca$rotation[,1]^2)
+```
+
+```{r}
+fviz_contrib(pca, choice = "var", axes = 1)
+```
+
+```{r}
+# Assuming 'pca' is your PCA object
+library(factoextra) # Make sure factoextra package is loaded
+
+# Extract the contributions
+contributions <- get_pca_var(pca)$contrib
+
+# Get the top 20 contributions
+top_20_contributions <- contributions[order(abs(contributions[, 1]), decreasing = TRUE)[1:20],]
+
+# Create a bar plot
+barplot(top_20_contributions[,1], 
+        names.arg = rownames(top_20_contributions), 
+        main = "Top 20 Contributions for First Principal Component",
+        xlab = "Variable",
+        ylab = "Contribution",
+        col = "skyblue",
+        las = 2, # Rotate labels on x-axis for better readability
+        cex.names = 0.7 # Reduce the size of variable names for better fit
+        )
+
+
+```
+
+```{r}
+# Assuming 'pca' is your PCA object
+library(factoextra) # Make sure factoextra package is loaded
+
+# Extract the contributions for the second principal component
+contributions_2nd_pc <- get_pca_var(pca)$contrib[, 2]
+
+# Get the top 20 contributions for the second principal component
+top_20_contributions_2nd_pc <- contributions_2nd_pc[order(abs(contributions_2nd_pc), decreasing = TRUE)[1:20]]
+
+# Create a bar plot for the second principal component
+barplot(top_20_contributions_2nd_pc, 
+        main = "Top 20 Contributions for Second Principal Component",
+        xlab = "Variable",
+        ylab = "Contribution",
+        col = "skyblue",
+        las = 2, # Rotate labels on x-axis for better readability
+        cex.names = 0.7 # Reduce the size of variable names for better fit
+        )
+
+```
+
+```{r}
+barplot(pca$rotation[,2], las=2, col="darkblue", main="Principal Component 2 Loadings")
+```
+
+```{r}
+fviz_contrib(pca, choice = "var", axes = 2)
+```
+
+# LCA on scaled data
+
+```{r}
+library(scales)
+
+# Function to scale values to a 1 to 10 range
+scale_to_10 <- function(x) {
+  rescaled <- rescale(x, to = c(1, 10))
+  return(round(rescaled))
+}
+
+# Apply the scaling function to each column of the dataframe
+scaled_dfEU <- as.data.frame(lapply(dfEU, scale_to_10))
+
+library(poLCA)
+
+# Assuming dfEU is your dataframe containing all the variables
+
+# Perform LCA with different number of classes
+BIC_values <- numeric(5)  # Preallocate space for BIC values
+for (k in 1:5) {  # Loop through different numbers of classes
+  f1 <- as.formula(paste("(cbind(js_div, js_euth, hom_prn, js_sex, js_prst, js_suic, imp_rlg, job_ntn, incm_lvl, c_chr) ~ 1)"))
+  fit <- poLCA(f1, data = scaled_dfEU, nclass = k)
+  BIC_values[k] <- fit$bic
+}
+
+# Plot BIC values
+plot(1:5, BIC_values, type = "b", xlab = "Number of Classes", ylab = "BIC", main = "BIC Plot for Latent Class Analysis")
+
+# Find the best number of classes based on minimum BIC
+best_K <- which.min(BIC_values)
+cat("The best number of classes according to BIC:", best_K)
+
+```
+
+```{r}
+
+library(LCAplotter)
+
+f1 <- as.formula(paste("(cbind(js_div, js_euth, hom_prn, js_sex, js_prst, js_suic, imp_rlg, job_ntn, incm_lvl, c_chr) ~ 1)"))
+fit <- poLCA(f1, data = scaled_dfEU, nclass = 2, graphs = TRUE)
+
+```
+
+```{r}
+library(ggplot2)
+
+# Define the variables of interest
+interests <- c("js_div", "js_euth", "hom_prn", "js_sex", "js_prst", "js_suic", "imp_rlg", "job_ntn", "incm_lvl", "c_chr")
+
+# Plotting the means data
+plot_means <- means %>%
+  ggplot(aes(Interest, Mean, group = Profile, color = Profile)) +
+  geom_point(size = 2.25) +
+  geom_line(size = 1.25) +
+  scale_x_discrete(limits = interests) +  # Use the variables from your LCA analysis
+  labs(x = NULL, y = "Standardized mean interest") +
+  theme_bw(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
+
+plot_means
+
+```
